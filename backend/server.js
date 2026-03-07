@@ -2,6 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const dotenv = require('dotenv');
+const path = require('path'); // ✅ ADDED for serving frontend
 
 dotenv.config();
 
@@ -13,14 +14,17 @@ const { seedAdmin } = require('./config/seed');
 
 const app = express();
 
-// Middleware
+// ✅ UPDATED CORS: allows both local and production frontend
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:3000',
+  origin: process.env.NODE_ENV === 'production'
+    ? '*'
+    : (process.env.CLIENT_URL || 'http://localhost:3000'),
   credentials: true
 }));
+
 app.use(express.json());
 
-// Routes
+// API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/contributions', contributionRoutes);
@@ -31,15 +35,28 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'BackerSphere X API is running', timestamp: new Date() });
 });
 
-// Connect to MongoDB
+// ✅ ADDED: Serve React frontend in production
+// This makes the entire app accessible from ONE single URL
+if (process.env.NODE_ENV === 'production') {
+  // Serve static files from React build folder
+  app.use(express.static(path.join(__dirname, '../frontend/build')));
+
+  // Any route that is not an API route will serve the React app
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '../frontend/build', 'index.html'));
+  });
+}
+
+// Connect to MongoDB and start server
 mongoose.connect(process.env.MONGODB_URI)
   .then(async () => {
     console.log('✅ MongoDB connected');
     await seedAdmin();
     const PORT = process.env.PORT || 5000;
-    app.listen(PORT, () => {
+    app.listen(PORT, '0.0.0.0', () => { // ✅ UPDATED: '0.0.0.0' required for Fly.io/Render
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📡 API available at http://localhost:${PORT}/api`);
+      console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
     });
   })
   .catch((err) => {
@@ -47,4 +64,4 @@ mongoose.connect(process.env.MONGODB_URI)
     process.exit(1);
   });
 
-module.exports = app;
+ module.exports = app;
